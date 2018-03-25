@@ -309,13 +309,12 @@ named!(lex_reserved_ident<&[u8], Token>,
 // integer
 named!(lex_integer<&[u8], Token>,
     do_parse!(
-      prefix: opt!(tag!("-")) >>
       number: alt_complete!(
         map_opt!(preceded!(tag!("0x"), hex_digit), |v| vu8_to_token(v, 16)) |
         map_opt!(preceded!(tag!("0o"), oct_digit), |v| vu8_to_token(v, 8)) |
         map_opt!(preceded!(tag!("0b"), take_while!(is_one_or_zero)), |v| vu8_to_token(v, 2)) |
         map_opt!(digit, |v| vu8_to_token(v, 10))
-      ) >> (u32_to_token(prefix, number))
+      ) >> (u32_to_token(number))
 ));
 
 #[inline]
@@ -325,11 +324,8 @@ fn vu8_to_token(n: &[u8], radix: u32) -> Option<i64> {
 }
 
 #[inline]
-fn u32_to_token(prefix: Option<&[u8]>, number: i64) -> Token {
-    match prefix {
-        Some(_) => Token::Integer(-number),
-        _ => Token::Integer(number),
-    }
+fn u32_to_token(number: i64) -> Token {
+    Token::Integer(number)
 }
 
 #[inline]
@@ -346,7 +342,6 @@ named!(parse_float_exp, recognize!(do_parse!(
 
 named!(lex_float<&[u8], Token>,
        do_parse!(
-              prefix: opt!(tag!("-")) >>
               float: map_res!( recognize!( do_parse!(
                          alt!(
                           delimited!(digit, tag!("."), opt!(complete!(digit))) |
@@ -355,17 +350,12 @@ named!(lex_float<&[u8], Token>,
                       >> opt!(complete!(parse_float_exp))
                       >> ())),
                   str::from_utf8)
-           >> (parse_float_token(prefix, float)))
+           >> (parse_float_token(float)))
 );
 
 #[inline]
-fn parse_float_token(prefix: Option<&[u8]>, float: &str) -> Token {
-
-    match prefix {
-        Some(_) => Token::Float(-f64::from_str(float).unwrap()),
-        _ =>
-         Token::Float(f64::from_str(float).unwrap())
-    }
+fn parse_float_token(float: &str) -> Token {
+    Token::Float(f64::from_str(float).unwrap())
 }
 
 // Strings
@@ -511,13 +501,11 @@ mod tests {
     #[test]
     fn number_test() {
         assert_eq!(lex_integer(b"123").to_result(), Ok(Token::Integer(123)));
-        assert_eq!(lex_integer(b"-123").to_result(), Ok(Token::Integer(-123)));
-        assert_eq!(lex_integer(b"-0x123").to_result(), Ok(Token::Integer(-0x123)));
+        assert_eq!(lex_integer(b"0x123").to_result(), Ok(Token::Integer(0x123)));
         assert_eq!(lex_integer(b"0o100").to_result(), Ok(Token::Integer(0o100)));
-        assert_eq!(lex_integer(b"-0x1B0").to_result(), Ok(Token::Integer(-0x1B0)));
         assert_eq!(lex_integer(b"0b100").to_result(), Ok(Token::Integer(0b100)));
         assert_eq!(lex_float(b"1.32").to_result(), Ok(Token::Float(1.32)));
-        assert_eq!(lex_float(b"-1.32e4").to_result(), Ok(Token::Float(-1.32e4)));
+        assert_eq!(lex_float(b"1.32e4").to_result(), Ok(Token::Float(1.32e4)));
     }
 
     #[test]
@@ -549,8 +537,8 @@ mod tests {
         /* hello
         world!*/
         c = '\\n'
-        even = 0
-        odd = -0
+        even = -0
+        odd = 0
         i = 1
         while i < 10 {
             if i % 2 == 0 {
@@ -579,6 +567,7 @@ mod tests {
             Token::Symbol(Symbol::LineEnd),
             Token::Identifier("even".to_string()),
             Token::Symbol(Symbol::Assign),
+            Token::Symbol(Symbol::Minus),
             Token::Integer(0),
             Token::Symbol(Symbol::LineEnd),
             Token::Identifier("odd".to_string()),
@@ -645,8 +634,6 @@ mod tests {
             Token::Symbol(Symbol::LineEnd),
             Token::EOF
         ];
-
-        println!("{:?}", tokens);
 
         assert_eq!(tokens, result)
 
