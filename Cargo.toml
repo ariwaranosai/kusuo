@@ -7,5 +7,11 @@ authors = ["ariwaranosai <nkssai@outlook.com>"]
 name = "kusuo_lib"
 path = "src/lib/lib.rs"
 
+[[bin]]
+name = "kusuo"
+path = "src/bin/kusuoc.rs"
+doc = false
+
 [dependencies]
 nom = "^3.2"
+clap = "~2.31"
