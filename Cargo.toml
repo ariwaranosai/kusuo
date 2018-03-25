@@ -1,0 +1,11 @@
+[package]
+name = "kusuo"
+version = "0.1.0"
+authors = ["ariwaranosai <nkssai@outlook.com>"]
+
+[lib]
+name = "kusuo_lib"
+path = "src/lib/lib.rs"
+
+[dependencies]
+nom = "^3.2"
