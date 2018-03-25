@@ -8,7 +8,7 @@ name = "kusuo_lib"
 path = "src/lib/lib.rs"
 
 [[bin]]
-name = "kusuo"
+name = "kusuoc"
 path = "src/bin/kusuoc.rs"
 doc = false
 
