@@ -3,6 +3,7 @@
 pub enum ConstLiteral {
     IntegerLiteral(i64),
     StringLiteral(String),
+    FloatLiteral(f64),
     BoolLiteral(bool),
     CharLiteral(char)
 }

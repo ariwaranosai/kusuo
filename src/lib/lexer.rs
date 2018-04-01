@@ -305,7 +305,7 @@ macro_rules! check(
         }
       }
       if failed {
-        IResult::Error(ErrorKind::Custom(20))
+        IResult::Error(Err::Code(ErrorKind::Custom(20)))
       } else {
         IResult::Done(&b""[..], $input)
       }
@@ -365,8 +365,7 @@ named!(lex_float<&[u8], Token>,
               float: map_res!( recognize!( do_parse!(
                          alt!(
                           delimited!(digit, tag!("."), opt!(complete!(digit))) |
-                          delimited!(opt!(digit), tag!("."), digit) |
-                          digit)
+                          delimited!(opt!(digit), tag!("."), digit))
                       >> opt!(complete!(parse_float_exp))
                       >> ())),
                   str::from_utf8)
@@ -440,10 +439,10 @@ fn pic(input: &[u8]) -> IResult<&[u8], char> {
                 b"t" => IResult::Done(i2, '\t'),
                 b"v" => IResult::Done(i2, '\x0b'),
                 b"\\" => IResult::Done(i2, '\\'),
-                _ => IResult::Error(ErrorKind::Char)
+                _ => IResult::Error(Err::Code(ErrorKind::Custom(20)))
             }
         }
-        b"\'" => IResult::Error(ErrorKind::Char),
+        b"\'" => IResult::Error(Err::Code(ErrorKind::Char)),
         c => IResult::Done(i1, char::from(c[0]))
     }
 }
@@ -482,6 +481,7 @@ named!(lex_comment<&[u8], Token>,alt_complete!(
 
 named!(lex_token<&[u8], Token>, alt_complete!(
     lex_comment |
+    lex_float |
     lex_integer |
     lex_punctuation |
     lex_string |
@@ -538,7 +538,7 @@ mod tests {
     fn char_test() {
         assert_eq!(lex_char(b"'a'").to_result(), Ok(Token::Char('a')));
         assert_eq!(lex_char(b"'\\\\'").to_result(), Ok(Token::Char('\\')));
-        assert_eq!(lex_char(b"''").to_result(), Err(ErrorKind::Char));
+        assert_eq!(lex_char(b"''").to_result(), Err(Err::Code(ErrorKind::Char)));
     }
 
 
@@ -557,6 +557,8 @@ mod tests {
         /* hello
         world!*/
         c = '\\n'
+        d = 12.3
+        d = 12.3e3
         even = -0
         odd = 0
         i = 1
@@ -584,6 +586,14 @@ mod tests {
             Token::Identifier("c".to_string()),
             Token::Symbol(Symbol::Assign),
             Token::Char('\n'),
+            Token::Symbol(Symbol::LineEnd),
+            Token::Identifier("d".to_string()),
+            Token::Symbol(Symbol::Assign),
+            Token::Float(12.3),
+            Token::Symbol(Symbol::LineEnd),
+            Token::Identifier("d".to_string()),
+            Token::Symbol(Symbol::Assign),
+            Token::Float(12.3e3),
             Token::Symbol(Symbol::LineEnd),
             Token::Identifier("even".to_string()),
             Token::Symbol(Symbol::Assign),

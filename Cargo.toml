@@ -13,5 +13,8 @@ path = "src/bin/kusuoc.rs"
 doc = false
 
 [dependencies]
-nom = "^3.2"
 clap = "~2.31"
+
+[dependencies.nom]
+version = "^3.2"
+features = ["verbose-errors"]

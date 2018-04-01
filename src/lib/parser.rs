@@ -48,6 +48,7 @@ macro_rules! parse_literal (
                 Token::Bool(b) => IResult::Done(i1, BoolLiteral(b)),
                 Token::String(s) => IResult::Done(i1, StringLiteral(s)),
                 Token::Char(c) => IResult::Done(i1, CharLiteral(c)),
+                Token::Float(f) => IResult::Done(i1, FloatLiteral(f)),
                 _ => IResult::Error(error_position!(ErrorKind::Tag, $i))
             }
         }
@@ -61,6 +62,7 @@ named!(parse_expr<Tokens, Expr>,
 named!(parse_stmt<Tokens, Stmt>, alt_complete!(
   parse_return_stmt |
   parse_loop_token |
+  parse_assign_stmt |
   parse_expr_stmt
 ));
 
@@ -68,10 +70,9 @@ named!(parse_return_stmt<Tokens, Stmt>,
     do_parse!(
         tag_token!(Token::Keyword(Keyword::Return)) >>
         expr: opt!(parse_expr) >>
-        alt_complete!(
-            tag_token!(Token::Symbol(Symbol::SemiColon)) |
-            tag_token!(Token::Symbol(Symbol::LineEnd))
-        ) >> (Stmt::Return {
+        opt!(tag_token!(Token::Symbol(Symbol::SemiColon))) >>
+        tag_token!(Token::Symbol(Symbol::LineEnd)) >>
+        (Stmt::Return {
             value: expr
         })
 
@@ -81,10 +82,8 @@ named!(parse_return_stmt<Tokens, Stmt>,
 named!(parse_expr_stmt<Tokens, Stmt>,
     do_parse!(
         expr: parse_expr >>
-        opt!(alt_complete!(
-            tag_token!(Token::Symbol(Symbol::SemiColon)) |
-            tag_token!(Token::Symbol(Symbol::LineEnd))
-        )) >>
+        opt!(tag_token!(Token::Symbol(Symbol::SemiColon))) >>
+        tag_token!(Token::Symbol(Symbol::LineEnd)) >>
         (Stmt::Expr {
             expr: Box::new(expr)
         })
@@ -102,7 +101,7 @@ fn parse_loop_token(input: Tokens) ->  IResult<Tokens, Stmt> {
         match t1.toks[0].clone() {
             Token::Keyword(Keyword::Continue) => IResult::Done(i1, Stmt::Continue),
             Token::Keyword(Keyword::Break) => IResult::Done(i1, Stmt::Break),
-            _ => IResult::Error(ErrorKind::Custom(22))
+            _ => IResult::Error(Err::Code(ErrorKind::Custom(22)))
         }
     }
 }
@@ -223,7 +222,7 @@ fn parse_prefix_expr(input: Tokens) -> IResult<Tokens, Expr> {
                 op: Uop::Not,
                 expr: Box::new(e)
             }),
-            _ => IResult::Error(ErrorKind::Custom(22)),
+            _ => IResult::Error(Err::Code(ErrorKind::Custom(22))),
         }
     }
 }
@@ -259,6 +258,8 @@ named!(parse_assign_stmt<Tokens, Stmt>,
         ident: parse_ident!() >>
         tag_token!(Token::Symbol(Symbol::Assign)) >>
         expr: parse_expr >>
+        opt!(tag_token!(Token::Symbol(Symbol::SemiColon))) >>
+        tag_token!(Token::Symbol(Symbol::LineEnd)) >>
         (Stmt::Assign {
             ident,
             value: expr
@@ -418,12 +419,28 @@ mod test {
     fn assert_input_with_program(input: &[u8], expect: Program) {
         let r = Lexer::lex_tokens(input).to_result().unwrap();
         let tokens = Tokens::new(&r);
+        println!("{:?}", tokens);
         let result = Parser::parse_tokens(tokens).to_result().unwrap();
         assert_eq!(result, expect);
     }
 
     #[test]
     fn assign_staments() {
+        let input = b"x = 5;
+        y = 12
+        z = true;
+        k = 12.3
+        k = 12.5e3
+        ";
+        let result = vec![
+            Stmt::Assign { ident: Identifier { name: "x".to_owned() }, value: Expr::LiteralExpr { value: IntegerLiteral(5)}},
+            Stmt::Assign { ident: Identifier { name: "y".to_owned() }, value: Expr::LiteralExpr { value: IntegerLiteral(12) } },
+            Stmt::Assign { ident: Identifier { name: "z".to_owned() }, value: Expr::LiteralExpr { value: BoolLiteral(true) } },
+            Stmt::Assign { ident: Identifier { name: "k".to_owned() }, value: Expr::LiteralExpr { value: FloatLiteral(12.3) } },
+            Stmt::Assign { ident: Identifier { name: "k".to_owned() }, value: Expr::LiteralExpr { value: FloatLiteral(12.5e3) } }
+        ];
+
+        assert_input_with_program(input, result);
     }
 
 }
