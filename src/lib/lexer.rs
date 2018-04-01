@@ -30,7 +30,10 @@ pub enum Keyword {
     Else,
     Break,
     True,
-    False
+    False,
+    Def,
+    Continue,
+    Return
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +42,8 @@ pub enum Symbol {
     RParenthesis, // )
     LBrace, // {
     RBrace, // }
+    LBracket, // [
+    RBracket, // ]
     LineEnd, // \n
     SemiColon, // ;
     Assign, // =
@@ -54,6 +59,7 @@ pub enum Symbol {
     Div, // /
     Mod, // %
     Not, // !
+    Comma // ,
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -163,6 +169,14 @@ named!(right_parenthesis<&[u8], Token>,
  do_parse!(tag!(")") >> (Token::Symbol(Symbol::RParenthesis)))
 );
 
+named!(left_bracket<&[u8], Token>,
+ do_parse!(tag!("[") >> (Token::Symbol(Symbol::LBracket)))
+);
+
+named!(right_bracket<&[u8], Token>,
+ do_parse!(tag!("]") >> (Token::Symbol(Symbol::RBracket)))
+);
+
 named!(left_brace<&[u8], Token>,
  do_parse!(tag!("{") >> (Token::Symbol(Symbol::LBrace)))
 );
@@ -232,6 +246,9 @@ named!(not_op<&[u8], Token>,
  do_parse!(tag!("!") >> (Token::Symbol(Symbol::Not)))
 );
 
+named!(comma<&[u8], Token>,
+ do_parse!(tag!(",") >> (Token::Symbol(Symbol::Comma)))
+);
 // all operators
 
 named!(lex_operator<&[u8], Token>, alt!(
@@ -268,8 +285,11 @@ fn parse_keywords_ident(c: &str, rest: Option<&str>) -> Token {
     match s.as_ref() {
         "if" => Token::Keyword(Keyword::If),
         "else" => Token::Keyword(Keyword::Else),
+        "while" => Token::Keyword(Keyword::While),
+        "def" => Token::Keyword(Keyword::Def),
         "true" => Token::Bool(true),
         "false" => Token::Bool(false),
+        "return" => Token::Keyword(Keyword::Return),
         _ => Token::Identifier(s)
     }
 }
@@ -578,7 +598,7 @@ mod tests {
             Token::Symbol(Symbol::Assign),
             Token::Integer(1),
             Token::Symbol(Symbol::LineEnd),
-            Token::Identifier("while".to_string()),
+            Token::Keyword(Keyword::While),
             Token::Identifier("i".to_string()),
             Token::Symbol(Symbol::LT),
             Token::Integer(10),

@@ -7,23 +7,18 @@ pub enum ConstLiteral {
     CharLiteral(char)
 }
 
+#[derive(PartialEq, Clone, Debug)]
 pub struct Identifier {
-    name: String
+    pub name: String
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct Arguments {
-    args: Vec<Expr>,
-    vararg: Option<Identifier>,
-    kwargs: Option<Identifier>,
-    defaults: Vec<Expr>
+    pub args: Vec<Identifier>
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
-    Func {
-        name: Box<Identifier>,
-        args: Box<Arguments>,
-        body: BlockStmt
-    },
     Return {
         value: Option<Expr>
     },
@@ -31,16 +26,11 @@ pub enum Stmt {
         cond: Box<Expr>,
         block: BlockStmt
     },
-    If {
-        cond: Box<Expr>,
-        body: BlockStmt,
-        or_else: Option<BlockStmt>
-    },
     Expr {
         expr: Box<Expr>
     },
     Assign {
-        targets: Vec<Expr>,
+        ident: Identifier,
         value: Expr
     },
     Break,
@@ -49,39 +39,60 @@ pub enum Stmt {
 
 pub type BlockStmt = Vec<Stmt>;
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     LiteralExpr {
         value: ConstLiteral
     },
-    BoolOp {
-        bop: Bop,
-        values: Vec<Expr>
-    },
-    BinOp {
+    InfixExpr {
         left: Box<Expr>,
         op: Op,
         right: Box<Expr>
     },
-    UnaryOp {
+    PrefixExpr {
         op: Uop,
-        exp: Box<Expr>
+        expr: Box<Expr>
     },
     Name {
         name: Identifier
+    },
+    FnCallExpr {
+        fun: Box<Expr>,
+        params: Vec<Expr>
+    },
+    ArrayExpr {
+        values: Vec<Expr>
+    },
+    ArrayIndexExpr {
+        array: Box<Expr>,
+        index: Box<Expr>
+    },
+    If {
+        cond: Box<Expr>,
+        body: BlockStmt,
+        or_else: Option<BlockStmt>
+    },
+    Func {
+        name: Identifier,
+        args: Arguments,
+        body: BlockStmt
     }
 }
 
+#[derive(PartialOrd, PartialEq, Clone, Debug)]
 pub enum Bop {
     And,
     Or
 }
 
+#[derive(PartialOrd, PartialEq, Clone, Debug)]
 pub enum Uop {
     Not,
     UAdd,
     USub,
 }
 
+#[derive(PartialOrd, PartialEq, Clone, Debug)]
 pub enum Op {
     Add,
     Mins,
@@ -96,3 +107,16 @@ pub enum Op {
     Gt,
     GtE
 }
+
+#[derive(PartialEq, PartialOrd, Debug, Clone)]
+pub enum Precedence {
+    PLowest,
+    PEquals,
+    PLessGreater,
+    PSum,
+    PProduct,
+    PCall,
+    PIndex,
+}
+
+pub type Program = BlockStmt;
