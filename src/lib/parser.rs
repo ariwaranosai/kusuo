@@ -59,19 +59,29 @@ named!(parse_expr<Tokens, Expr>,
     apply!(parse_pratt_expr, Precedence::PLowest)
 );
 
-named!(parse_stmt<Tokens, Stmt>, alt_complete!(
-  parse_return_stmt |
-  parse_loop_token |
-  parse_assign_stmt |
-  parse_expr_stmt
+named!(parse_stmt<Tokens, Stmt>,
+     alt_complete!(
+        parse_return_stmt |
+        parse_loop_token |
+        parse_assign_stmt |
+        parse_expr_stmt)
+
+);
+
+named!(parse_stmt_end<Tokens, ()>, do_parse!(
+    many1!(alt_complete!(
+            preceded!(tag_token!(Token::Symbol(Symbol::SemiColon)),
+             tag_token!(Token::Symbol(Symbol::LineEnd))) |
+            tag_token!(Token::Symbol(Symbol::SemiColon)) |
+            tag_token!(Token::Symbol(Symbol::LineEnd))
+    )) >> (())
 ));
 
 named!(parse_return_stmt<Tokens, Stmt>,
     do_parse!(
         tag_token!(Token::Keyword(Keyword::Return)) >>
         expr: opt!(parse_expr) >>
-        opt!(tag_token!(Token::Symbol(Symbol::SemiColon))) >>
-        tag_token!(Token::Symbol(Symbol::LineEnd)) >>
+        parse_stmt_end >>
         (Stmt::Return {
             value: expr
         })
@@ -82,11 +92,8 @@ named!(parse_return_stmt<Tokens, Stmt>,
 named!(parse_expr_stmt<Tokens, Stmt>,
     do_parse!(
         expr: parse_expr >>
-        opt!(tag_token!(Token::Symbol(Symbol::SemiColon))) >>
-        tag_token!(Token::Symbol(Symbol::LineEnd)) >>
-        (Stmt::Expr {
-            expr: Box::new(expr)
-        })
+        parse_stmt_end >>
+        (Stmt::Expr {expr})
     )
 );
 
@@ -228,11 +235,13 @@ fn parse_prefix_expr(input: Tokens) -> IResult<Tokens, Expr> {
 }
 
 named!(parse_atom_expr<Tokens, Expr>, alt_complete!(
-    parse_prefix_expr |
-     parse_ident_expr |
        parse_lit_expr |
+     parse_ident_expr |
+    parse_prefix_expr |
+     parse_paren_expr |
+     parse_array_expr |
         parse_if_expr |
-     parse_paren_expr
+        parse_fn_expr
 ));
 
 named!(parse_ident_expr<Tokens, Expr>,
@@ -258,8 +267,7 @@ named!(parse_assign_stmt<Tokens, Stmt>,
         ident: parse_ident!() >>
         tag_token!(Token::Symbol(Symbol::Assign)) >>
         expr: parse_expr >>
-        opt!(tag_token!(Token::Symbol(Symbol::SemiColon))) >>
-        tag_token!(Token::Symbol(Symbol::LineEnd)) >>
+        parse_stmt_end >>
         (Stmt::Assign {
             ident,
             value: expr
@@ -424,13 +432,27 @@ mod test {
         assert_eq!(result, expect);
     }
 
+    fn is_the_same_inputs(input1: &[u8], input2: &[u8]) {
+        let r = Lexer::lex_tokens(input1).to_result().unwrap();
+        let tokens = Tokens::new(&r);
+        println!("{:?}", tokens);
+        let result1 = Parser::parse_tokens(tokens).to_result().unwrap();
+
+        let r = Lexer::lex_tokens(input2).to_result().unwrap();
+        let tokens = Tokens::new(&r);
+        println!("{:?}", tokens);
+        let result2 = Parser::parse_tokens(tokens).to_result().unwrap();
+
+        assert_eq!(result1, result2);
+    }
+
     #[test]
-    fn assign_staments() {
+    fn assign_stmts() {
         let input = b"x = 5;
         y = 12
         z = true;
-        k = 12.3
-        k = 12.5e3
+        k = 12.3; k = 12.5e3
+        ;;
         ";
         let result = vec![
             Stmt::Assign { ident: Identifier { name: "x".to_owned() }, value: Expr::LiteralExpr { value: IntegerLiteral(5)}},
@@ -441,6 +463,29 @@ mod test {
         ];
 
         assert_input_with_program(input, result);
+    }
+
+    fn expr_stmt() {
+        let input = b"12 * 25";
+        let result = vec![
+            Stmt::Expr {
+                expr: Expr::InfixExpr {
+                    op: Op::Mult,
+                    left: Box::new(Expr::LiteralExpr {value: IntegerLiteral(12)}),
+                    right: Box::new(Expr::LiteralExpr {value: IntegerLiteral(25)})
+                }
+            }
+        ];
+        assert_input_with_program(input, result);
+
+        let input = b"12 - 12 / -22 + (x - x)";
+        let input2 = b"12 - (12 / (-22)) + (x - x)";
+        is_the_same_inputs(input, input2);
+    }
+
+    #[test]
+    fn array_stmts() {
+        let input = b"[1, 2, 3, a + b, a * b]";
     }
 
 }

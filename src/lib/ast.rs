@@ -24,11 +24,11 @@ pub enum Stmt {
         value: Option<Expr>
     },
     While {
-        cond: Box<Expr>,
+        cond: Expr,
         block: BlockStmt
     },
     Expr {
-        expr: Box<Expr>
+        expr: Expr
     },
     Assign {
         ident: Identifier,
