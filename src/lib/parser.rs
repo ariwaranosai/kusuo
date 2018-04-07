@@ -62,20 +62,25 @@ named!(parse_expr<Tokens, Expr>,
 named!(parse_stmt<Tokens, Stmt>,
      alt_complete!(
         parse_return_stmt |
-        parse_loop_token |
         parse_assign_stmt |
+        parse_loop_token |
         parse_expr_stmt)
 
 );
 
 named!(parse_stmt_end<Tokens, ()>, do_parse!(
-    many1!(alt_complete!(
+    many0!(alt_complete!(
             preceded!(tag_token!(Token::Symbol(Symbol::SemiColon)),
              tag_token!(Token::Symbol(Symbol::LineEnd))) |
             tag_token!(Token::Symbol(Symbol::SemiColon)) |
             tag_token!(Token::Symbol(Symbol::LineEnd))
     )) >> (())
 ));
+
+named!(parse_opt_end<Tokens, ()>, do_parse!(
+        many0!(tag_token!(Token::Symbol(Symbol::LineEnd))) >> ()
+   )
+);
 
 named!(parse_return_stmt<Tokens, Stmt>,
     do_parse!(
@@ -138,10 +143,27 @@ fn go_parse_pratt_expr(input: Tokens, precedence: Precedence, left: Expr) -> IRe
                 go_parse_pratt_expr(i2, precedence, left2)
             }
             (ref peek_precedunce, _) if precedence < *peek_precedunce => {
-                let (i2, left2) = try_parse!(input, apply!(parse_index_expr, left));
+                let (i2, left2) = try_parse!(input, apply!(parse_infix_expr, left));
                 go_parse_pratt_expr(i2, precedence, left2)
             }
             _ => IResult::Done(input, left),
+        }
+    }
+}
+
+fn parse_infix_expr(input: Tokens, left: Expr) -> IResult<Tokens, Expr> {
+    let (i1, t1) = try_parse!(input, take!(1));
+    if t1.toks.is_empty() {
+        IResult::Error(error_position!(ErrorKind::Tag, input))
+    } else {
+        let next = t1.toks[0].clone();
+        let (precedence, maybe_op) = op_token(&next);
+        match maybe_op {
+            None => IResult::Error(error_position!(ErrorKind::Tag, input)),
+            Some(op) => {
+                let (i2, right) = try_parse!(i1, apply!(parse_pratt_expr, precedence));
+                IResult::Done(i2, Expr::InfixExpr {op, left: Box::new(left), right: Box::new(right)})
+            }
         }
     }
 }
@@ -313,6 +335,7 @@ named!(parse_else_expr<Tokens, Option<BlockStmt>>,
 named!(parse_block_stmt<Tokens, BlockStmt>,
     do_parse!(
         tag_token!(Token::Symbol(Symbol::LBrace)) >>
+        parse_opt_end >>
         ss: many0!(parse_stmt) >>
         tag_token!(Token::Symbol(Symbol::RBrace)) >>
         (ss)
@@ -324,6 +347,7 @@ named!(parse_fn_expr<Tokens, Expr>,
         tag_token!(Token::Keyword(Keyword::Def)) >>
         name: parse_ident!() >>
         tag_token!(Token::Symbol(Symbol::LParenthesis)) >>
+        parse_opt_end >>
         params: alt_complete!(parse_params | empty_params) >>
         tag_token!(Token::Symbol(Symbol::LParenthesis)) >>
         block: parse_block_stmt >>
@@ -427,20 +451,18 @@ mod test {
     fn assert_input_with_program(input: &[u8], expect: Program) {
         let r = Lexer::lex_tokens(input).to_result().unwrap();
         let tokens = Tokens::new(&r);
-        println!("{:?}", tokens);
         let result = Parser::parse_tokens(tokens).to_result().unwrap();
+        println!("{:?}", result);
         assert_eq!(result, expect);
     }
 
     fn is_the_same_inputs(input1: &[u8], input2: &[u8]) {
         let r = Lexer::lex_tokens(input1).to_result().unwrap();
         let tokens = Tokens::new(&r);
-        println!("{:?}", tokens);
         let result1 = Parser::parse_tokens(tokens).to_result().unwrap();
 
         let r = Lexer::lex_tokens(input2).to_result().unwrap();
         let tokens = Tokens::new(&r);
-        println!("{:?}", tokens);
         let result2 = Parser::parse_tokens(tokens).to_result().unwrap();
 
         assert_eq!(result1, result2);
@@ -452,6 +474,7 @@ mod test {
         y = 12
         z = true;
         k = 12.3; k = 12.5e3
+        f = a + b
         ;;
         ";
         let result = vec![
@@ -459,14 +482,20 @@ mod test {
             Stmt::Assign { ident: Identifier { name: "y".to_owned() }, value: Expr::LiteralExpr { value: IntegerLiteral(12) } },
             Stmt::Assign { ident: Identifier { name: "z".to_owned() }, value: Expr::LiteralExpr { value: BoolLiteral(true) } },
             Stmt::Assign { ident: Identifier { name: "k".to_owned() }, value: Expr::LiteralExpr { value: FloatLiteral(12.3) } },
-            Stmt::Assign { ident: Identifier { name: "k".to_owned() }, value: Expr::LiteralExpr { value: FloatLiteral(12.5e3) } }
+            Stmt::Assign { ident: Identifier { name: "k".to_owned() }, value: Expr::LiteralExpr { value: FloatLiteral(12.5e3) } },
+            Stmt::Assign { ident: Identifier { name: "f".to_owned() }, value: Expr::InfixExpr {
+                                                                                    right: Box::new(Expr::Name { name: Identifier { name: "b".to_owned() }}),
+                                                                                    op: Op::Add,
+                                                                                    left: Box::new(Expr::Name { name: Identifier { name: "a".to_owned() }}),
+                                                                                } }
         ];
 
         assert_input_with_program(input, result);
     }
 
+    #[test]
     fn expr_stmt() {
-        let input = b"12 * 25";
+        let input = b"12 * 25;";
         let result = vec![
             Stmt::Expr {
                 expr: Expr::InfixExpr {
@@ -478,14 +507,87 @@ mod test {
         ];
         assert_input_with_program(input, result);
 
-        let input = b"12 - 12 / -22 + (x - x)";
-        let input2 = b"12 - (12 / (-22)) + (x - x)";
+        let input = b"12 - 12 / -22 + (x - x);";
+        let input2 = b"12 - (12 / (-22)) + (x - x);";
         is_the_same_inputs(input, input2);
+
+        //let input = b"10 + 5 * -21 / -10 * (a + b)";
+        //let program = vec![];
+        //assert_input_with_program(input, program);
+
     }
 
     #[test]
     fn array_stmts() {
         let input = b"[1, 2, 3, a + b, a * b]";
+        let program = vec![
+            Stmt::Expr {
+                expr: Expr::ArrayExpr {
+                values: vec![
+                    Expr::LiteralExpr{value: IntegerLiteral(1)},
+                    Expr::LiteralExpr{value: IntegerLiteral(2)},
+                    Expr::LiteralExpr{value: IntegerLiteral(3)},
+                    Expr::InfixExpr {
+                        op: Op::Add,
+                        left: Box::new(Expr::Name {name: Identifier { name: "a".to_owned()}}),
+                        right: Box::new(Expr::Name {name: Identifier { name: "b".to_owned()}})
+                    },
+                    Expr::InfixExpr {
+                        op: Op::Mult,
+                        left: Box::new(Expr::Name {name: Identifier { name: "a".to_owned()}}),
+                        right: Box::new(Expr::Name {name: Identifier { name: "b".to_owned()}})
+                    },
+                ]
+            }}
+        ];
+        assert_input_with_program(input, program);
+    }
+
+    #[test]
+    fn if_expr() {
+        let input = b"if (x > y) {
+        x
+        } else {if (x == y){
+          0
+        } else {
+          y
+        }}";
+        let program = vec![
+            Stmt::Expr {
+                expr: Expr::If {
+                    cond: Box::new(Expr::InfixExpr {
+                        left: Box::new(Expr::Name {name: Identifier {name: "x".to_owned()}}),
+                        op: Op::Gt,
+                        right: Box::new(Expr::Name {name: Identifier {name: "y".to_owned()}})
+                    }),
+                    body: vec![
+                        Stmt::Expr {
+                            expr: Expr::Name {name: Identifier {name: "x".to_owned()}}
+                        }
+                    ],
+                    or_else: Some(vec![
+                        Stmt::Expr {
+                            expr: Expr::If {
+                                cond: Box::new(Expr::InfixExpr {
+                                    left: Box::new(Expr::Name {name: Identifier {name: "x".to_owned()}}),
+                                    op: Op::Eq,
+                                    right: Box::new(Expr::Name {name: Identifier {name: "y".to_owned()}})
+                                }),
+                                body: vec![
+                                    Stmt::Expr {
+                                        expr: Expr::LiteralExpr{value: IntegerLiteral(0)},
+                                    }
+                                ],
+                                or_else: Some(vec![
+                                    Stmt::Expr {expr: Expr::Name { name: Identifier { name: "y".to_owned()}}}
+                                ])
+                            }
+                        }
+                    ])
+                }
+            }
+        ];
+        assert_input_with_program(input, program);
     }
 
 }

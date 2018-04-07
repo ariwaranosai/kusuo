@@ -272,9 +272,12 @@ named!(lex_operator<&[u8], Token>, alt!(
 named!(lex_punctuation<&[u8], Token>, alt!(
  left_parenthesis |
  right_parenthesis|
+      left_bracket|
+     right_bracket|
         left_brace|
        right_brace|
-        semi_colon
+        semi_colon|
+             comma
 ));
 
 
